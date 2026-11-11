@@ -570,8 +570,11 @@ fun Modifier.glassMenuTrigger(trigger: GlassMenuTrigger): Modifier = graphicsLay
     val handoff = morph.isClosing && morph.hasHandedOff
     alpha = when {
         !morph.isShowing || handoff -> 1f
-        !morph.isClosing -> 1f - (clamped / 0.20f).coerceIn(0f, 1f)
-        else -> 0f
+        // Out slightly later than before, so the glass has taken over the
+        // control's place before the control goes.
+        !morph.isClosing -> 1f - ((clamped - 0.05f) / 0.15f).coerceIn(0f, 1f)
+        // Back in as the glass fades, the other half of the same crossfade.
+        else -> 1f - (clamped / HANDOVER_FADE).coerceIn(0f, 1f)
     }
     translationX = if (handoff) trigger.finalDx * raw else 0f
     translationY = if (handoff) trigger.finalDy * raw else 0f
@@ -630,13 +633,12 @@ private fun choiceMenuFrame(
         lerp(tw, menuWidth, state.sizeT).coerceAtLeast(0f)
     }
 
+    // The same corner rule both ways: from the control's own radius to the
+    // menu's, never rounder than the body can be. Closing used to force a
+    // full circle while the rows were still showing, clipping the text.
     val maxRadius = minOf(currentWidth, currentHeight) / 2f
-    val radiusT = dev.lelonio.square.ui.glass.morph.FlutterCurves.easeInExpo(state.sizeT.coerceIn(0f, 1f))
-    val currentRadius = if (closing) {
-        if (isPremium) maxRadius else lerp(triggerRadius, CHOICE_MENU_RADIUS, radiusT)
-    } else {
-        lerp(maxRadius, CHOICE_MENU_RADIUS, radiusT)
-    }
+    val radiusT = state.sizeT.coerceIn(0f, 1f).let { it * it * (3f - 2f * it) }
+    val currentRadius = minOf(maxRadius, lerp(triggerRadius, CHOICE_MENU_RADIUS, radiusT))
 
     val effectiveDx: Float
     val effectiveDy: Float
@@ -684,17 +686,25 @@ private fun choiceMenuFrame(
         }
     }
 
-    val overlayOpacity = if (closing && morph.hasHandedOff) 0f else 1f
-    val rowsPresent = if (closing) clampedValue > 0.85f else clampedValue > 0.25f
+    // Closing, the glass fades into the real control over the last stretch
+    // of the spring instead of being swapped for it (see glassMenuTrigger).
+    val overlayOpacity = when {
+        !closing -> 1f
+        morph.hasHandedOff -> 0f
+        else -> (clampedValue / HANDOVER_FADE).coerceIn(0f, 1f)
+    }
+    // Rows wait for the shape to settle on the way out, and leave before it
+    // collapses on the way back.
+    val rowsPresent = if (closing) clampedValue > 0.55f else clampedValue > 0.4f
     val itemOpacity = if (closing) {
-        ((clampedValue - 0.85f) / 0.15f).coerceIn(0f, 1f)
+        ((clampedValue - 0.55f) / 0.30f).coerceIn(0f, 1f)
     } else {
-        ((clampedValue - 0.25f) / 0.45f).coerceIn(0f, 1f)
+        ((clampedValue - 0.4f) / 0.4f).coerceIn(0f, 1f)
     }
     val itemScale = lerp(
-        0.7f,
+        0.8f,
         1f,
-        dev.lelonio.square.ui.glass.morph.FlutterCurves.easeOut(((clampedValue - 0.25f) / 0.75f).coerceIn(0f, 1f)),
+        dev.lelonio.square.ui.glass.morph.FlutterCurves.easeOut(((clampedValue - 0.35f) / 0.65f).coerceIn(0f, 1f)),
     )
 
     return ChoiceMenuFrame(
@@ -730,6 +740,9 @@ private class RoundRectInColumn(
         ),
     )
 }
+
+/** The last part of the closing spring over which glass and control crossfade. */
+private const val HANDOVER_FADE = 0.15f
 
 /** Upstream's GlassMenu.menuBorderRadius default, in logical pixels. */
 private const val CHOICE_MENU_RADIUS = 32f

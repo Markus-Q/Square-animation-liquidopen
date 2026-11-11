@@ -56,12 +56,12 @@ object LiquidMorphPhysics {
     val closeSpring = SpringDescription(mass = 1f, stiffness = 200f, damping = 21f)
     const val closeVelocityHint = -3.2f
 
-    private const val backOutAmplitude = 2.5f
-    private const val minBackOutAmplitude = 0.7f
+    private const val backOutAmplitude = 1.2f
+    private const val minBackOutAmplitude = 0.5f
     private const val adaptiveThresholdDy = 100f
-    private const val anchorEaseDuration = 0.4f
-    private const val blendMultiplier = 150f
-    private const val maxBlend = 28f
+    private const val anchorEaseDuration = 0.35f
+    private const val blendMultiplier = 90f
+    private const val maxBlend = 18f
     private const val closeProximityThreshold = 0.6f
     private const val maxPushTravelPx = 80f
 
@@ -106,8 +106,10 @@ object LiquidMorphPhysics {
 
         val rawSizeT = when {
             isClosing -> clampedValue.pow(1.4f)
-            adaptive && scaleDelta > 3f -> smootherStep(clampedValue)
-            else -> FlutterCurves.linearToEaseOut(clampedValue)
+            // Opening: a calmer start than upstream's, so the glass leaves
+            // the button at roughly the button's own size instead of jumping
+            // to a large, displaced blob in the first frames.
+            else -> lerp(smootherStep(clampedValue), FlutterCurves.linearToEaseOut(clampedValue), 0.35f)
         }
         val sizeT = rawSizeT + closeUndershoot
 
@@ -169,6 +171,8 @@ object LiquidMorphPhysics {
         clampedValue < 0.999f -> MorphPhase.Arriving
         else -> MorphPhase.Settled
     }
+
+    private fun lerp(a: Float, b: Float, t: Float) = a + (b - a) * t
 
     private fun smootherStep(t: Float): Float {
         val tc = t.coerceIn(0f, 1f)
